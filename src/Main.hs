@@ -11,13 +11,18 @@ import qualified Data.Text as TS
 
 main :: IO ()
 main = sh $ do
-    aSubm <- find (suffix "sources.cm") submDir
-    let aSubmDir = directory aSubm
-    cd aSubmDir
-    cp  runScript "./run.sml"
+    aSubmDir <- ls submDir
+    aSubm <- find (suffix "sources.cm") aSubmDir
+    let implDir = directory aSubm
+    cd implDir
+    cp runScript "./run.sml"
     exitCode <-
-      proc "sml" ["run.sml"] (return testZero)
-    liftIO $ print $ (encodeString aSubmDir) ++ "\n\t" ++ show exitCode
+      proc "sml" ["run.sml",  testZero] (select [])
+    --print $ (encodeString aSubmDir) ++ "\n\t" ++ show exitCode
+    output 
+      (decodeString "report.txt") 
+      (return . stringToLine $ show exitCode ++ " -- " ++ encodeString (basename aSubmDir))
+    return ()
 
 baseDir :: String
 baseDir = "/home/ulysses/c/cs6410-compilers-TA"
@@ -30,8 +35,8 @@ testDir :: FilePath
 testDir = decodeString $
   baseDir ++ "/mine/tiger-testcases"
 
-testZero :: Line
-testZero = fromJust . textToLine . TS.pack $
+testZero :: Text
+testZero = TS.pack $
   baseDir ++ "/mine/tiger-testcases/test.tig"
 
 runScript :: FilePath
@@ -40,6 +45,9 @@ runScript = decodeString $
 
 pathToLine :: FilePath -> Line
 pathToLine = fromJust . textToLine . fromRight "" . toText
+
+stringToLine :: String -> Line
+stringToLine = fromJust . textToLine . TS.pack
 
 {-
 newtype Comment = C [CommentContent]
