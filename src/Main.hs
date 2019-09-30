@@ -6,23 +6,54 @@ import Turtle
 import Prelude hiding (FilePath)
 import Data.Either (fromRight)
 import Data.Maybe (fromJust)
+import Data.List (isPrefixOf)
 import qualified Control.Foldl as Fold
 import qualified Data.Text as TS
 
 main :: IO ()
-main = sh $ do
+main = (sh $ do
+    prepareSubmissionForTest
+
+    -- Run a submission over what should lex and record results in "_out" subdir
+    test <- tigerFiles testsShouldLexDir
+    _ <- recordOutput test
+    return ()) *> print "Done testing."
+
+prepareSubmissionForTest :: Shell ()
+prepareSubmissionForTest = do
     aSubmDir <- ls submDir
     aSubm <- find (suffix "sources.cm") aSubmDir
     let implDir = directory aSubm
     cd implDir
     cp runScript "./run.sml"
-    exitCode <-
-      proc "sml" ["run.sml",  testZero] (select [])
-    --print $ (encodeString aSubmDir) ++ "\n\t" ++ show exitCode
-    output 
-      (decodeString "report.txt") 
-      (return . stringToLine $ show exitCode ++ " -- " ++ encodeString (basename aSubmDir))
-    return ()
+    mktree "_out"
+    liftIO . print $ "Processing " ++ (pathToString aSubmDir)
+
+recordOutput :: FilePath -> Shell ()
+recordOutput test = do
+    liftIO . print $ "Testing: " `TS.append` pathToText test
+    let linesOutRaw = inprocWithErr "sml" ["run.sml",  pathToText test] (select [])
+        dropWhileNotStart = Fold
+            (\(ls, started) l ->  -- step
+                if started
+                  then (l:ls, started)
+                  else (ls, ("LEXER_START" `TS.isPrefixOf`) . lineToText $ l))
+            ([], False)           -- init
+            fst                   -- extract
+    linesOutRev <- fold linesOutRaw dropWhileNotStart
+    let linesOut = select $ reverse linesOutRev
+    output (outFileName test) linesOut
+
+tigerFiles :: FilePath -> Shell FilePath
+tigerFiles = find (suffix ".tig")
+
+outFileName :: FilePath -> FilePath
+outFileName inp = textToPath ("_out/" `TS.append` inpFName `TS.append` ".out")
+  where
+    inpFName = pathToText . filename $ inp
+{-
+--       Hard-coded paths
+-}
 
 baseDir :: String
 baseDir = "/home/ulysses/c/cs6410-compilers-TA"
@@ -35,6 +66,9 @@ testDir :: FilePath
 testDir = decodeString $
   baseDir ++ "/mine/tiger-testcases"
 
+testsShouldLexDir :: FilePath
+testsShouldLexDir = testDir </> "lex/should_lex"
+
 testZero :: Text
 testZero = TS.pack $
   baseDir ++ "/mine/tiger-testcases/test.tig"
@@ -43,11 +77,27 @@ runScript :: FilePath
 runScript = decodeString $
   baseDir ++ "/mine/tiger-my/chap2/run.sml"
 
+{-
+--       I hate string-like type conversions
+-}
+
 pathToLine :: FilePath -> Line
 pathToLine = fromJust . textToLine . fromRight "" . toText
 
 stringToLine :: String -> Line
 stringToLine = fromJust . textToLine . TS.pack
+
+stringToPath :: String -> FilePath
+stringToPath = decodeString
+
+pathToString :: FilePath -> String
+pathToString = encodeString
+
+textToPath :: Text -> FilePath
+textToPath = fromText
+
+pathToText :: FilePath -> Text
+pathToText = fromRight "ERRORING on FilePath->Text conv" . toText
 
 {-
 newtype Comment = C [CommentContent]
