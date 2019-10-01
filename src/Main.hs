@@ -11,7 +11,8 @@ import qualified Control.Foldl as Fold
 import qualified Data.Text as TS
 
 main :: IO ()
-main = (sh $ do
+main = 
+  (sh $ do
     prepareSubmissionForTest
 
     -- Run a submission over what should lex and record results in "_out" subdir
@@ -29,26 +30,42 @@ prepareSubmissionForTest = do
     mktree "_out"
     liftIO . print $ "Processing " ++ (pathToString aSubmDir)
 
+-- record output of a submission stored at FilePath, when run of the whole suite
 recordOutput :: FilePath -> Shell ()
 recordOutput test = do
     liftIO . print $ "Testing: " `TS.append` pathToText test
     let linesOutRaw = inprocWithErr "sml" ["run.sml",  pathToText test] (select [])
-        dropWhileNotStart = Fold
-            (\(ls, started) l ->  -- step
-                if started
-                  then (l:ls, started)
-                  else (ls, ("LEXER_START" `TS.isPrefixOf`) . lineToText $ l))
-            ([], False)           -- init
-            fst                   -- extract
-    linesOutRev <- fold linesOutRaw dropWhileNotStart
+    (linesErrRev, linesOutRev) <- fold linesOutRaw dropWhileNotStart
     let linesOut = select $ reverse linesOutRev
-    output (outFileName test) linesOut
+        linesErr = select $ reverse linesErrRev
+    when (not . null $ linesOutRev) $ output (outFileName ".out" test) linesOut
+    when (not . null $ linesErrRev) $ output (outFileName ".err" test) linesErr
+
+-- cuts head of stream of lines from stderr/stdout of a submission,
+-- while not see the start_lexer marker in the stdout (the second stream)
+dropWhileNotStart :: Fold (Either Line Line) ([Line], [Line])
+dropWhileNotStart = Fold
+    f                     -- step
+    (([], []), False)     -- init
+    fst                   -- extract
+  where
+    f ((errs, outs), {- started= -}True) eitherErrOut =
+      (updateErrsOuts errs outs eitherErrOut, True)
+    f (lines, False) eitherErrOut =
+          (lines, checkStarted eitherErrOut)
+    checkStarted (Left l) = False
+    checkStarted (Right l) =
+        ("LEXER_START" `TS.isPrefixOf`) . lineToText $ l
+
+updateErrsOuts :: [Line] -> [Line] -> Either Line Line -> ([Line], [Line])
+updateErrsOuts errs outs (Left e) = (e:errs, outs)
+updateErrsOuts errs outs (Right o) = (errs, o:outs)
 
 tigerFiles :: FilePath -> Shell FilePath
 tigerFiles = find (suffix ".tig")
 
-outFileName :: FilePath -> FilePath
-outFileName inp = textToPath ("_out/" `TS.append` inpFName `TS.append` ".out")
+outFileName :: Text -> FilePath -> FilePath
+outFileName ext inp = textToPath ("_out/" `TS.append` inpFName `TS.append` ext)
   where
     inpFName = pathToText . filename $ inp
 {-
@@ -60,7 +77,7 @@ baseDir = "/home/ulysses/c/cs6410-compilers-TA"
 
 submDir :: FilePath
 submDir = decodeString $
-  baseDir ++ "/submissions/a1/assignment_1492"
+  baseDir ++ "/submissions/a1/assignment_1492_sample"
 
 testDir :: FilePath
 testDir = decodeString $
