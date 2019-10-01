@@ -2,7 +2,7 @@
 
 module Main where
 
-import Turtle
+import Turtle hiding (textToLine)
 import Prelude hiding (FilePath)
 import Data.Either (fromRight)
 import Data.Maybe (fromJust)
@@ -20,6 +20,8 @@ main =
     _ <- recordOutput test
     return ()) *> print "Done testing."
 
+-- enumerating all submissions and for each one:
+-- cd into it, cp the driver (run.sml) into it, create `_out` subdir
 prepareSubmissionForTest :: Shell ()
 prepareSubmissionForTest = do
     aSubmDir <- ls submDir
@@ -34,28 +36,17 @@ prepareSubmissionForTest = do
 recordOutput :: FilePath -> Shell ()
 recordOutput test = do
     liftIO . print $ "Testing: " `TS.append` pathToText test
-    let linesOutRaw = inprocWithErr "sml" ["run.sml",  pathToText test] (select [])
-    (linesErrRev, linesOutRev) <- fold linesOutRaw dropWhileNotStart
-    let linesOut = select $ reverse linesOutRev
-        linesErr = select $ reverse linesErrRev
-    when (not . null $ linesOutRev) $ output (outFileName ".out" test) linesOut
-    when (not . null $ linesErrRev) $ output (outFileName ".err" test) linesErr
+    (_exitCode, outRaw, errRaw) <-
+      procStrictWithErr "sml" ["run.sml",  pathToText test] (select [])
+    let linesOut = select . map textToLine . dropWhileNotStart . TS.lines $ outRaw
+        linesErr = select . map textToLine . TS.lines $ errRaw
+    output (outFileName ".out" test) linesOut
+    when (not . TS.null $ errRaw) $ output (outFileName ".err" test) linesErr
 
 -- cuts head of stream of lines from stderr/stdout of a submission,
 -- while not see the start_lexer marker in the stdout (the second stream)
-dropWhileNotStart :: Fold (Either Line Line) ([Line], [Line])
-dropWhileNotStart = Fold
-    f                     -- step
-    (([], []), False)     -- init
-    fst                   -- extract
-  where
-    f ((errs, outs), {- started= -}True) eitherErrOut =
-      (updateErrsOuts errs outs eitherErrOut, True)
-    f (lines, False) eitherErrOut =
-          (lines, checkStarted eitherErrOut)
-    checkStarted (Left l) = False
-    checkStarted (Right l) =
-        ("LEXER_START" `TS.isPrefixOf`) . lineToText $ l
+dropWhileNotStart :: [Text] -> [Text]
+dropWhileNotStart = dropWhile ("LEXER_START" `TS.isPrefixOf`)
 
 updateErrsOuts :: [Line] -> [Line] -> Either Line Line -> ([Line], [Line])
 updateErrsOuts errs outs (Left e) = (e:errs, outs)
@@ -68,6 +59,7 @@ outFileName :: Text -> FilePath -> FilePath
 outFileName ext inp = textToPath ("_out/" `TS.append` inpFName `TS.append` ext)
   where
     inpFName = pathToText . filename $ inp
+
 {-
 --       Hard-coded paths
 -}
@@ -77,7 +69,7 @@ baseDir = "/home/ulysses/c/cs6410-compilers-TA"
 
 submDir :: FilePath
 submDir = decodeString $
-  baseDir ++ "/submissions/a1/assignment_1492_sample"
+  baseDir ++ "/submissions/a1/assignment_1492"
 
 testDir :: FilePath
 testDir = decodeString $
@@ -99,10 +91,13 @@ runScript = decodeString $
 -}
 
 pathToLine :: FilePath -> Line
-pathToLine = fromJust . textToLine . fromRight "" . toText
+pathToLine = textToLine . fromRight "" . toText
 
 stringToLine :: String -> Line
-stringToLine = fromJust . textToLine . TS.pack
+stringToLine = textToLine . TS.pack
+
+textToLine :: Text -> Line
+textToLine = unsafeTextToLine
 
 stringToPath :: String -> FilePath
 stringToPath = decodeString
