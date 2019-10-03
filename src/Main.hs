@@ -16,7 +16,7 @@ main =
     prepareSubmissionForTest
 
     -- Run a submission over what should lex and record results in "_out" subdir
-    test <- tigerFiles testsShouldLexDir
+    test <- tigerFiles testsShouldWorkDir
     _ <- recordOutput test
     return ()) *> print "Done testing."
 
@@ -29,7 +29,7 @@ prepareSubmissionForTest = do
     let implDir = directory aSubm
     cd implDir
     cp runScript "./run.sml"
-    mktree "_out"
+    mktree outDir
     liftIO . print $ "Processing " ++ (pathToString aSubmDir)
 
 -- record output of a submission stored at FilePath, when run of the whole suite
@@ -46,26 +46,28 @@ recordOutput test = do
 -- cuts head of stream of lines from stderr/stdout of a submission,
 -- while not see the start_lexer marker in the stdout (the second stream)
 dropWhileNotStart :: [Text] -> [Text]
-dropWhileNotStart = dropWhile ("LEXER_START" `TS.isPrefixOf`)
-
-updateErrsOuts :: [Line] -> [Line] -> Either Line Line -> ([Line], [Line])
-updateErrsOuts errs outs (Left e) = (e:errs, outs)
-updateErrsOuts errs outs (Right o) = (errs, o:outs)
+dropWhileNotStart = tail . dropWhile (not . ("LEXER_START" `TS.isPrefixOf`))
 
 tigerFiles :: FilePath -> Shell FilePath
 tigerFiles = find (suffix ".tig")
 
 outFileName :: Text -> FilePath -> FilePath
-outFileName ext inp = textToPath ("_out/" `TS.append` inpFName `TS.append` ext)
+outFileName ext inp = outDir </> textToPath (inpFName `TS.append` ext)
   where
     inpFName = pathToText . filename $ inp
 
 {-
---       Hard-coded paths
+--       Hard-coded paths and constants
 -}
 
 baseDir :: String
 baseDir = "/home/ulysses/c/cs6410-compilers-TA"
+
+outDir :: IsString s => s
+outDir = "_out"
+
+phase :: IsString s => s
+phase = "lex"
 
 submDir :: FilePath
 submDir = decodeString $
@@ -75,12 +77,11 @@ testDir :: FilePath
 testDir = decodeString $
   baseDir ++ "/mine/tiger-testcases"
 
-testsShouldLexDir :: FilePath
-testsShouldLexDir = testDir </> "lex/should_lex"
+testsShouldWorkDir :: FilePath
+testsShouldWorkDir = testDir </> phase </> "should_work"
 
-testZero :: Text
-testZero = TS.pack $
-  baseDir ++ "/mine/tiger-testcases/test.tig"
+testsShouldFailDir :: FilePath
+testsShouldFailDir = testDir </> phase </> "should_fail"
 
 runScript :: FilePath
 runScript = decodeString $
