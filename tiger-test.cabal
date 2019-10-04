@@ -23,6 +23,7 @@ executable tiger-test
   -- other-extensions:
   build-depends:       base ^>=4.12.0.0,
                        foldl,
+                       string-interpolate,
                        text,
                        turtle
   hs-source-dirs:      src
