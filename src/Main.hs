@@ -1,16 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 module Main where
 
 import Turtle hiding (textToLine)
+import qualified Turtle.Bytes as TBS
 import Prelude hiding (FilePath)
 import Data.Char (isAlpha, isDigit)
 import Data.Either (fromRight)
 import Data.Maybe (fromJust)
 import Data.List (isPrefixOf)
+
 import qualified Control.Foldl as Fold
+import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.Text as TS
 import Data.String.Interpolate (i)
 
@@ -80,16 +84,13 @@ compareWithReference = do
     actOut <- liftIO $ readTextFile outFile
     refOut  <- liftIO $ readTextFile (referenceDir </> filename outFile)
     storeResult (filename outFile) $ align 1 (TS.lines refOut) (TS.lines actOut)
-
--- TODO: check no .err files in the should_work path
-checkNoDotErrFiles = return () -- undefined
+    -- TODO: check for .err files in the should_work path
 
 checkOutputs :: IO ()
 checkOutputs = sh $ do
     enumerateSubmissions
     prepareTesting
     compareWithReference
-    checkNoDotErrFiles
 
 {-
 --  Recording outputs
@@ -115,13 +116,13 @@ recordOutput :: FilePath -> Shell ()
 recordOutput test = do
     liftIO . print $ "Testing: " `TS.append` pathToText test
     (_exitCode, outRaw, errRaw) <-
-      procStrictWithErr "sml" ["run.sml",  pathToText test] (select [])
-    let linesOut = select . map textToLine . dropWhileNotStart . TS.lines $ outRaw
-        linesErr = select . map textToLine . TS.lines $ errRaw
+      TBS.procStrictWithErr "sml" ["run.sml",  pathToText test] (select [])
+    let linesOut = select . dropWhileNotStart . BSC8.lines $ outRaw
+        linesErr = select . BSC8.lines $ errRaw
     let outFile = (outFileName ".out" test)
     touch outFile
-    output outFile linesOut
-    when (not . TS.null $ errRaw) $ output (outFileName ".err" test) linesErr
+    TBS.output outFile linesOut
+    when (not . BSC8.null $ errRaw) $ TBS.output (outFileName ".err" test) linesErr
 
 collectOutputs :: IO ()
 collectOutputs = sh $ do
@@ -139,8 +140,8 @@ collectOutputs = sh $ do
 
 -- cuts head of stream of lines from stderr/stdout of a submission,
 -- while not see the start_lexer marker in the stdout (the second stream)
-dropWhileNotStart :: [Text] -> [Text]
-dropWhileNotStart = tail . dropWhile (not . ("LEXER_START" `TS.isPrefixOf`))
+dropWhileNotStart :: [ByteString] -> [ByteString]
+dropWhileNotStart = tail . dropWhile (not . ("LEXER_START" `BSC8.isPrefixOf`))
 
 tigerFiles :: FilePath -> Shell FilePath
 tigerFiles = find (suffix ".tig")
@@ -155,7 +156,7 @@ outFileName ext inp = outDir </> textToPath (inpFName `TS.append` ext)
 -}
 
 outDir :: IsString s => s
-outDir = "_out"
+outDir = "_out_fail"
 
 phase :: IsString s => s
 phase = "lex"
@@ -168,7 +169,7 @@ baseDir = "/home/ulysses/Documents/classes/cs6410-compilers-TA"
 
 referenceDir :: FilePath
 referenceDir = decodeString $
-  baseDir ++ "/submissions/a1/_MINE/_out"
+  baseDir ++ "/submissions/a1/_MINE/" ++ outDir
 
 submDir :: FilePath
 submDir = decodeString $
