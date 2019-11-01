@@ -20,9 +20,15 @@ import Data.String.Interpolate (i)
 
 main :: IO ()
 main = do
-  collectOutputs
-  print "DONE: recording output."
-  checkOutputs
+  collectOutputs testsShouldWorkDir outDir
+  print "DONE: recording output for should-work tests."
+{-
+  collectOutputs testsShouldFailDir outFailDir
+  print "DONE: recording output for should-fail tests."
+-}
+{-
+  checkOutputs outDir
+-}
   print "DONE: testing."
 
 {-
@@ -78,19 +84,21 @@ storeResult test (NotMatch line ref act) = append reportFilename report
     report = return . stringToLine $
       [i|#{pathToString test}: line #{show line}: expected "#{ref}", actual "#{act}"|]
 
-compareWithReference :: Shell ()
-compareWithReference = do
-    outFile <- find (suffix ".out") outDir
+compareWithReference :: FilePath -> Shell ()
+compareWithReference odir = do
+    outFile <- find (suffix ".out") odir
     actOut <- liftIO $ readTextFile outFile
     refOut  <- liftIO $ readTextFile (referenceDir </> filename outFile)
     storeResult (filename outFile) $ align 1 (TS.lines refOut) (TS.lines actOut)
     -- TODO: check for .err files in the should_work path
 
-checkOutputs :: IO ()
-checkOutputs = sh $ do
+-- Compare ouputs from the current submission with the reference ones
+-- and produce "report.txt"
+checkOutputs :: FilePath -> IO ()
+checkOutputs odir = sh $ do
     enumerateSubmissions
     prepareTesting
-    compareWithReference
+    compareWithReference odir
 
 {-
 --  Recording outputs
@@ -106,33 +114,32 @@ enumerateSubmissions = do
     liftIO . print $ "Processing " ++ (pathToString aSubmDir)
 
 -- cd into it, cp the driver (run.sml) into it, create `_out` subdir
-prepareCollectingOutput :: Shell ()
-prepareCollectingOutput = do
+prepareCollectingOutput :: FilePath -> Shell ()
+prepareCollectingOutput odir = do
     cp runScript "./run.sml"
-    mktree outDir
+    mktree odir
 
 -- record output of a submission stored at FilePath, when run of the whole suite
-recordOutput :: FilePath -> Shell ()
-recordOutput test = do
+recordOutput :: FilePath -> FilePath -> Shell ()
+recordOutput test odir = do
     liftIO . print $ "Testing: " `TS.append` pathToText test
     (_exitCode, outRaw, errRaw) <-
       TBS.procStrictWithErr "sml" ["run.sml",  pathToText test] (select [])
-    let linesOut = select . dropWhileNotStart . BSC8.lines $ outRaw
-        linesErr = select . BSC8.lines $ errRaw
-    let outFile = (outFileName ".out" test)
+    let linesOut = pure . BSC8.unlines . dropWhileNotStart . BSC8.lines $ outRaw
+        linesErr = pure . BSC8.unlines. BSC8.lines $ errRaw
+    let outFile = (outFileName odir ".out" test)
     touch outFile
     TBS.output outFile linesOut
-    when (not . BSC8.null $ errRaw) $ TBS.output (outFileName ".err" test) linesErr
+    when (not . BSC8.null $ errRaw) $ TBS.output (outFileName odir ".err" test) linesErr
 
-collectOutputs :: IO ()
-collectOutputs = sh $ do
+collectOutputs :: FilePath -> FilePath -> IO ()
+collectOutputs tests odir = sh $ do
     enumerateSubmissions
-    prepareCollectingOutput
+    prepareCollectingOutput odir
 
-    -- Run a submission over what should lex and record results in "_out" subdir
-    test <- tigerFiles testsShouldWorkDir
-    _ <- recordOutput test
-    return ()
+    -- Run a submission over the tests and record results in "_out" subdir
+    test <- tigerFiles tests
+    recordOutput test odir
 
 {-
 --  Helpers
@@ -141,13 +148,13 @@ collectOutputs = sh $ do
 -- cuts head of stream of lines from stderr/stdout of a submission,
 -- while not see the start_lexer marker in the stdout (the second stream)
 dropWhileNotStart :: [ByteString] -> [ByteString]
-dropWhileNotStart = tail . dropWhile (not . ("LEXER_START" `BSC8.isPrefixOf`))
+dropWhileNotStart = tail . dropWhile (not . (startMarker `BSC8.isPrefixOf`))
 
 tigerFiles :: FilePath -> Shell FilePath
 tigerFiles = find (suffix ".tig")
 
-outFileName :: Text -> FilePath -> FilePath
-outFileName ext inp = outDir </> textToPath (inpFName `TS.append` ext)
+outFileName :: FilePath -> Text -> FilePath -> FilePath
+outFileName odir ext inp = odir </> textToPath (inpFName `TS.append` ext)
   where
     inpFName = pathToText . filename $ inp
 
@@ -156,10 +163,16 @@ outFileName ext inp = outDir </> textToPath (inpFName `TS.append` ext)
 -}
 
 outDir :: IsString s => s
-outDir = "_out_fail"
+outDir = "_out"
+
+outFailDir :: IsString s => s
+outFailDir = "_out_fail"
 
 phase :: IsString s => s
-phase = "lex"
+phase = "parse"
+
+startMarker :: IsString s => s
+startMarker = "PARSER_START"
 
 reportFilename :: IsString s => s
 reportFilename = "report.txt"
@@ -169,11 +182,11 @@ baseDir = "/home/ulysses/Documents/classes/cs6410-compilers-TA"
 
 referenceDir :: FilePath
 referenceDir = decodeString $
-  baseDir ++ "/submissions/a1/_MINE/" ++ outDir
+  baseDir ++ "/submissions/a2/_MINE/" ++ outDir
 
 submDir :: FilePath
 submDir = decodeString $
-  baseDir ++ "/submissions/a1/assignment_1492"
+  baseDir ++ "/submissions/a2/assignment_1559"
 
 testDir :: FilePath
 testDir = decodeString $
@@ -187,7 +200,7 @@ testsShouldFailDir = testDir </> phase </> "should_fail"
 
 runScript :: FilePath
 runScript = decodeString $
-  baseDir ++ "/mine/tiger-my/chap2/run.sml"
+  baseDir ++ "/mine/tiger-my/chap3/run.sml"
 
 {-
 --       I hate string-like type conversions
@@ -216,72 +229,3 @@ stringToText = TS.pack
 
 pathToString :: FilePath -> String
 pathToString = encodeString
-
-{-
-newtype Comment = C [CommentContent]
-data CommentContent 
-  = CS String 
-  | CC Comment
-
-controlCodes = "ABCDEFJHIJKLMNOPQRSTUVXYZ[\\]^_?"
-
-newtype StringLit = S [StringLitContent]
-data StringLitContent
-  = C Char
-  | NL -- '\n'
-  | TB -- '\t'
-  | CN Int -- control code n is '\^c' where c = controlCodes !! n
-  | AS Int -- 3-digit ascii code n: '\n1n2n3'
-  | QT -- the double-quote '\"'
-  | BS -- the backslash
-  | IG String -- ignored sequence of non-printable chars:
-              -- space, newline, tab, formfeed — between a pair of backslashes
-
-data Lexem =
-  | TYPE
-  | VAR
-  | FUNCTION
-  | BREAK
-  | OF
-  | END
-  | IN
-  | NIL
-  | LET
-  | DO
-  | TO
-  | FOR
-  | WHILE
-  | ELSE
-  | THEN
-  | IF
-  | ARRAY
-  | ASSIGN
-  | OR
-  | AND
-  | GE
-  | GT
-  | LE
-  | LT
-  | NEQ
-  | EQ
-  | DIVIDE
-  | TIMES
-  | MINUS
-  | PLUS
-  | DOT
-  | RBRACE
-  | LBRACE
-  | RBRACK
-  | LBRACK
-  | RPAREN
-  | LPAREN
-  | SEMICOLON
-  | COLON
-  | COMMA
-  | INT Int
-  | ID String
---  | EOF -- I'm not sure we want explicit EOF
--- Here are things that are discarded or significantly transformed by lexers
-  | COMMENT Comment
-  | STRING StringLit
--}
