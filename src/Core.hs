@@ -1,10 +1,7 @@
-module Main where
+module Core where
 
-import StringUtils
-import CompareOutputs
 import Constants
-import Core
-import RecordOutputs
+import StringUtils
 
 import Turtle hiding (textToLine)
 import qualified Turtle.Bytes as TBS
@@ -20,18 +17,13 @@ import qualified Data.ByteString.Lazy as BSL
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.Text as TS
-import Data.String.Interpolate (i)
-import Data.ByteString.Lazy.Search (replace)
 
-main :: IO ()
-main = do
-  collectOutputs testsShouldWorkDir outDir
-  print "DONE: recording output for should-work tests."
-{-
-  collectOutputs testsShouldFailDir outFailDir
-  print "DONE: recording output for should-fail tests."
--}
-  checkOutputs outDir
-{-
--}
-  print "DONE: testing."
+-- enumerating all submissions and for each one:
+enumerateSubmissions :: Shell ()
+enumerateSubmissions = do
+    aSubmDir <- ls submDir
+    aSubm <- find (suffix "sources.cm") aSubmDir
+    let implDir = directory aSubm
+    cd implDir
+    liftIO . print $ "Processing " ++ pathToString aSubmDir
+

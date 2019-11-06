@@ -19,7 +19,12 @@ extra-source-files:  CHANGELOG.md
 
 executable tiger-test
   main-is:             Main.hs
-  -- other-modules:
+  extensions:          OverloadedStrings
+  other-modules:       CompareOutputs,
+                       Constants,
+                       Core,
+                       RecordOutputs,
+                       StringUtils
   -- other-extensions:
   build-depends:       base ^>=4.12.0.0,
                        bytestring,
