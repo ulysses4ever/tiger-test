@@ -25,6 +25,7 @@ executable tiger-test
                        bytestring,
                        foldl,
                        string-interpolate,
+                       stringsearch,
                        text,
                        turtle
   hs-source-dirs:      src

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE QuasiQuotes       #-}
 
 module Main where
@@ -7,16 +8,19 @@ module Main where
 import Turtle hiding (textToLine)
 import qualified Turtle.Bytes as TBS
 import Prelude hiding (FilePath)
-import Data.Char (isAlpha, isDigit)
+import Data.Char (isAlpha, isDigit, toUpper)
 import Data.Either (fromRight)
 import Data.Maybe (fromJust)
 import Data.List (isPrefixOf)
 
 import qualified Control.Foldl as Fold
 import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC8
 import qualified Data.Text as TS
 import Data.String.Interpolate (i)
+import Data.ByteString.Lazy.Search (replace)
 
 main :: IO ()
 main = do
@@ -26,8 +30,8 @@ main = do
   collectOutputs testsShouldFailDir outFailDir
   print "DONE: recording output for should-fail tests."
 -}
-{-
   checkOutputs outDir
+{-
 -}
   print "DONE: testing."
 
@@ -38,10 +42,11 @@ main = do
 type LineNum = Int
 data AlignResult 
     = Match
-    | NotMatch LineNum Text {- <- reference -} Text {- <- actual -}
+    | NotMatch LineNum ByteString {- <- reference -} ByteString {- <- actual -}
     | Truncated
+    deriving (Show)
 
-align :: Int -> [Text] -> [Text] -> AlignResult
+align :: Int -> [ByteString] -> [ByteString] -> AlignResult
 align _n [] _actual = Match
 align _n _refecernce [] = Truncated
 align n (r:rs) (a:as) =
@@ -49,16 +54,33 @@ align n (r:rs) (a:as) =
     Match -> align (n+1) rs as
     nm@(NotMatch _ _ _) -> nm
 
-matchLines :: Int -> Text -> Text -> AlignResult
-matchLines n (firstToken -> r) (firstToken -> a)
-    | r == a    = Match
-    | otherwise = NotMatch n r a
+matchLines :: Int -> ByteString -> ByteString -> AlignResult
+matchLines n r a
+    | r `eqLines` a = Match
+    | otherwise     = NotMatch n r a
 
-firstToken :: Text -> Text
-firstToken = TS.toUpper . TS.takeWhile isAlpha
+eqLines :: ByteString -> ByteString -> Bool
+eqLines (BSC8.words -> rs) (BSC8.words -> as)
+  = and $ (length rs == length as) : zipWith eqWords rs as
+
+eqWords :: ByteString -> ByteString -> Bool
+eqWords r a 
+  =  invertTrueFalse a == r 
+  || r == a
+
+invertTrueFalse :: ByteString -> ByteString
+invertTrueFalse w = BSL.toStrict res where
+  dummy = "X*X*X"
+  noTrue = replace "true" dummy (BSL.fromStrict w)
+  noFalse = replace @BS.ByteString  "false" "true" noTrue
+  res = replace @BS.ByteString dummy "false" noFalse
+
+firstToken :: ByteString -> ByteString
+firstToken = id -- BSC8.toUpper -- . TS.takeWhile isAlpha
 
 prepareTesting :: Shell ()
 prepareTesting = do
+    touch reportFilename
     rm reportFilename
     storeSubmId
 
@@ -87,9 +109,10 @@ storeResult test (NotMatch line ref act) = append reportFilename report
 compareWithReference :: FilePath -> Shell ()
 compareWithReference odir = do
     outFile <- find (suffix ".out") odir
-    actOut <- liftIO $ readTextFile outFile
-    refOut  <- liftIO $ readTextFile (referenceDir </> filename outFile)
-    storeResult (filename outFile) $ align 1 (TS.lines refOut) (TS.lines actOut)
+    -- liftIO . print $ "Comparing: " `TS.append` pathToText outFile
+    actOut <- TBS.input outFile
+    refOut  <- TBS.input (referenceDir </> filename outFile)
+    storeResult (filename outFile) $ align 1 (BSC8.lines refOut) (BSC8.lines actOut)
     -- TODO: check for .err files in the should_work path
 
 -- Compare ouputs from the current submission with the reference ones
@@ -148,7 +171,7 @@ collectOutputs tests odir = sh $ do
 -- cuts head of stream of lines from stderr/stdout of a submission,
 -- while not see the start_lexer marker in the stdout (the second stream)
 dropWhileNotStart :: [ByteString] -> [ByteString]
-dropWhileNotStart = tail . dropWhile (not . (startMarker `BSC8.isPrefixOf`))
+dropWhileNotStart = dropWhile (not . (startMarker `BSC8.isPrefixOf`))
 
 tigerFiles :: FilePath -> Shell FilePath
 tigerFiles = find (suffix ".tig")
@@ -162,17 +185,17 @@ outFileName odir ext inp = odir </> textToPath (inpFName `TS.append` ext)
 --       Hard-coded paths and constants
 -}
 
+phase :: IsString s => s
+phase = "parse"
+
 outDir :: IsString s => s
 outDir = "_out"
 
 outFailDir :: IsString s => s
 outFailDir = "_out_fail"
 
-phase :: IsString s => s
-phase = "parse"
-
-startMarker :: IsString s => s
-startMarker = "PARSER_START"
+startMarker :: ByteString
+startMarker = "START_" `BSC8.append` BSC8.map toUpper phase
 
 reportFilename :: IsString s => s
 reportFilename = "report.txt"
@@ -182,7 +205,7 @@ baseDir = "/home/ulysses/Documents/classes/cs6410-compilers-TA"
 
 referenceDir :: FilePath
 referenceDir = decodeString $
-  baseDir ++ "/submissions/a2/_MINE/" ++ outDir
+  baseDir ++ "/submissions/a2/517762_Chung_Brandon/Archive2/" ++ outDir
 
 submDir :: FilePath
 submDir = decodeString $
@@ -200,7 +223,7 @@ testsShouldFailDir = testDir </> phase </> "should_fail"
 
 runScript :: FilePath
 runScript = decodeString $
-  baseDir ++ "/mine/tiger-my/chap3/run.sml"
+  baseDir ++ "/mine/tiger-my/runners/" ++ phase ++ "/run.sml"
 
 {-
 --       I hate string-like type conversions
