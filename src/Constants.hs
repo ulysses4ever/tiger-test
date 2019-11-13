@@ -22,7 +22,7 @@ import Data.Text (Text)
 import Turtle (FilePath, Line, toText, fromText, unsafeTextToLine, encodeString, decodeString, (</>))
 
 phase :: IsString s => s
-phase = "parse"
+phase = "typecheck"
 
 outDir :: IsString s => s
 outDir = "_out"
@@ -33,19 +33,19 @@ outFailDir = "_out_fail"
 startMarker :: ByteString
 startMarker = "START_" `BSC8.append` BSC8.map toUpper phase
 
-reportFilename :: IsString s => s
-reportFilename = "report.txt"
+reportFilename :: FilePath -> FilePath
+reportFilename odir = odir </> "report.txt"
 
 baseDir :: String
 baseDir = "/home/ulysses/Documents/classes/cs6410-compilers-TA"
 
-referenceDir :: FilePath
-referenceDir = decodeString $
-  baseDir ++ "/submissions/a2/517762_Chung_Brandon/Archive2/" ++ outDir
+referenceDir :: FilePath -> FilePath
+referenceDir odir = (decodeString $
+  baseDir ++ "/submissions/a3/542568_Chung_Brandon/Archive") </> odir
 
 submDir :: FilePath
 submDir = decodeString $
-  baseDir ++ "/submissions/a2/assignment_1559"
+  baseDir ++ "/submissions/a3/assignment_1620/"
 
 testDir :: FilePath
 testDir = decodeString $

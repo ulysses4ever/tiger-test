@@ -37,13 +37,15 @@ recordOutput test odir = do
     liftIO . print $ "Testing: " `TS.append` pathToText test
     (_exitCode, outRaw, errRaw) <-
       TBS.procStrictWithErr "sml" ["run.sml",  pathToText test] (select [])
-    let linesOut = pure . BSC8.unlines . dropWhileNotStart . BSC8.lines $ outRaw
-        linesErr = pure . BSC8.unlines. BSC8.lines $ errRaw
-    let outFile = outFileName odir ".out" test
-    touch outFile
-    TBS.output outFile linesOut
+    let linesOut = dropWhileNotStart . BSC8.lines $ outRaw
+        out      = BSC8.unlines . tail $ linesOut
+        outFile  = outFileName odir ".out" test
+    when (length linesOut == 0)
+      $ fail "Program failed before reaching START marker"
+    unless (BSC8.null out) $
+      TBS.output outFile (pure out)
     unless (BSC8.null errRaw) $
-      TBS.output (outFileName odir ".err" test) linesErr
+      TBS.output (outFileName odir ".err" test) (pure errRaw)
 
 collectOutputs :: FilePath -> FilePath -> IO ()
 collectOutputs tests odir = sh $ do

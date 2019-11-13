@@ -5,9 +5,10 @@
 
 module CompareOutputs where
 
-import StringUtils
 import Constants
 import Core
+import Helpers
+import StringUtils
 
 import Turtle hiding (textToLine)
 import qualified Turtle.Bytes as TBS
@@ -16,6 +17,8 @@ import Data.Char (isAlpha, isDigit, toUpper)
 import Data.Either (fromRight)
 import Data.Maybe (fromJust)
 import Data.List (isPrefixOf)
+import Data.Set (Set, difference)
+import qualified Data.Set as S
 
 import qualified Control.Foldl as Fold
 import Data.ByteString.Char8 (ByteString)
@@ -84,14 +87,14 @@ firstToken = id -- BSC8.toUpper -- . TS.takeWhile isAlpha
 -
 -------------------------------------------------------------------------------}
 
-prepareTesting :: Shell ()
-prepareTesting = do
-    touch reportFilename
-    rm reportFilename
-    storeSubmId
+prepareTesting :: FilePath -> Shell ()
+prepareTesting odir = do
+    touch (reportFilename odir)
+    rm (reportFilename odir)
+    storeSubmId odir
 
-storeSubmId :: Shell ()
-storeSubmId = append reportFilename sudmId
+storeSubmId :: FilePath -> Shell ()
+storeSubmId odir = append (reportFilename odir) sudmId
   where 
     sudmId :: Shell Line
     sudmId = textToLine
@@ -101,13 +104,14 @@ storeSubmId = append reportFilename sudmId
            . pathToText 
            <$> pwd
 
-storeResult :: FilePath -> AlignResult -> Shell ()
-storeResult _ Match = return ()
-storeResult test Truncated = append reportFilename report 
+storeResult :: FilePath -> FilePath -> AlignResult -> Shell ()
+storeResult _odir  _test  Match = return ()
+storeResult odir test Truncated = append (reportFilename odir) report 
   where
     report = return . stringToLine $
                 pathToString test ++ ": truncated"
-storeResult test (NotMatch line ref act) = append reportFilename report 
+storeResult odir test (NotMatch line ref act) =
+  append (reportFilename odir) report 
   where
     report = return . stringToLine $
       [i|#{pathToString test}: line #{show line}: expected "#{ref}", actual "#{act}"|]
@@ -117,8 +121,9 @@ compareWithReference odir = do
     outFile <- find (suffix ".out") odir
     -- liftIO . print $ "Comparing: " `TS.append` pathToText outFile
     actOut <- TBS.input outFile
-    refOut  <- TBS.input (referenceDir </> filename outFile)
-    storeResult (filename outFile) $ align 1 (BSC8.lines refOut) (BSC8.lines actOut)
+    refOut  <- TBS.input (referenceDir odir </> filename outFile)
+    storeResult odir (filename outFile) $
+      align 1 (BSC8.lines refOut) (BSC8.lines actOut)
     -- TODO: check for .err files in the should_work path
 
 -- Compare ouputs from the current submission with the reference ones
@@ -126,5 +131,30 @@ compareWithReference odir = do
 checkOutputs :: FilePath -> IO ()
 checkOutputs odir = sh $ do
     enumerateSubmissions
-    prepareTesting
+    prepareTesting odir
     compareWithReference odir
+
+storeDiff :: FilePath -> Set Text -> Set Text -> Shell ()
+storeDiff odir r a =
+  let
+    rma = difference r a
+    amr = difference a r
+    rmaLines = setToLines rma
+    amrLines = setToLines amr
+    say = append (reportFilename odir)
+  in do
+    unless (S.null rma) $ do
+      say (return $ textToLine "Absent:")
+      say rmaLines
+    unless (S.null amr) $ do
+      say (return $ textToLine "Extras:")
+      say amrLines
+  
+checkSetOutputs :: FilePath -> IO ()
+checkSetOutputs odir = sh $ do
+  refSet <- lsSetNames $ referenceDir odir
+  enumerateSubmissions
+  actSet <- lsSetNames odir
+  prepareTesting odir
+  storeDiff odir refSet actSet
+  return ()
