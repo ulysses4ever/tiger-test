@@ -25,13 +25,13 @@ import Data.ByteString.Lazy.Search (replace)
 
 main :: IO ()
 main = do
---{-
   collectOutputs testsShouldWorkDir outDir
   print "DONE: recording output for should-work tests."
+{-
   collectOutputs testsShouldFailDir outFailDir
   print "DONE: recording output for should-fail tests."
 --}
---{-
+{-
   checkSetOutputs outDir
   checkSetOutputs outFailDir
 --}

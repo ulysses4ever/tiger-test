@@ -22,13 +22,16 @@ import Data.Text (Text)
 import Turtle (FilePath, Line, toText, fromText, unsafeTextToLine, encodeString, decodeString, (</>))
 
 phase :: IsString s => s
-phase = "typecheck"
+phase = "w3"
 
 outDir :: IsString s => s
 outDir = "_out"
 
 outFailDir :: IsString s => s
 outFailDir = "_out_fail"
+
+runScriptName :: IsString s => s
+runScriptName = "test.cpp"
 
 startMarker :: ByteString
 startMarker = "START_" `BSC8.append` BSC8.map toUpper phase
@@ -37,19 +40,19 @@ reportFilename :: FilePath -> FilePath
 reportFilename odir = odir </> "report.txt"
 
 baseDir :: String
-baseDir = "/home/ulysses/Documents/classes/cs6410-compilers-TA"
+baseDir = "/home/artem/Classes/cs4500"
 
 referenceDir :: FilePath -> FilePath
 referenceDir odir = (decodeString $
-  baseDir ++ "/submissions/a3/542568_Chung_Brandon/Archive") </> odir
+  baseDir ++ "/subm/w3/???") </> odir
 
 submDir :: FilePath
 submDir = decodeString $
-  baseDir ++ "/submissions/a3/assignment_1620/"
+  baseDir ++ "/subm/w3/assignment_1826"
 
 testDir :: FilePath
 testDir = decodeString $
-  baseDir ++ "/mine/tiger-testcases"
+  baseDir ++ "/mine/tests/" ++ phase
 
 testsShouldWorkDir :: FilePath
 testsShouldWorkDir = testDir </> phase </> "should_work"
@@ -59,4 +62,35 @@ testsShouldFailDir = testDir </> phase </> "should_fail"
 
 runScript :: FilePath
 runScript = decodeString $
-  baseDir ++ "/mine/tiger-my/runners/" ++ phase ++ "/run.sml"
+  baseDir ++ "/mine/runners/" ++ phase ++ "/test.cpp"
+
+dockerfile :: FilePath
+dockerfile = decodeString $
+  baseDir ++ "/mine/runners/" ++ phase ++ "/Dockerfile"
+
+--------------------------------------------------------
+--
+--  Commands
+--
+--------------------------------------------------------
+
+build :: IsString s => s
+build = "make"
+
+exe :: IsString s => s
+exe = "./a.out"
+
+--------------------------------------------------------
+--
+--  Tests
+--
+--------------------------------------------------------
+
+
+type Test = (Int, (String, String)) -- Id & Input & Output
+
+tests :: [Test]
+tests = zip [1..]
+  [ ("doc0.txt", "alanon 2")
+  , ("doc2.txt", "going 70")
+  ]

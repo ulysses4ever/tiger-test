@@ -19,7 +19,7 @@ extra-source-files:  CHANGELOG.md
 
 executable tiger-test
   main-is:             Main.hs
-  extensions:          OverloadedStrings
+  default-extensions:  OverloadedStrings
   other-modules:       CompareOutputs,
                        Constants,
                        Core,

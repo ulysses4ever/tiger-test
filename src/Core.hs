@@ -1,3 +1,4 @@
+{-#LANGUAGE OverloadedStrings #-}
 module Core where
 
 import Constants
@@ -21,9 +22,16 @@ import qualified Data.Text as TS
 -- enumerating all submissions and for each one:
 enumerateSubmissions :: Shell ()
 enumerateSubmissions = do
-    aSubmDir <- ls submDir
-    aSubm <- find (suffix "sources.cm") aSubmDir
-    let implDir = directory aSubm
-    cd implDir
+    cd submDir
+    cp dockerfile "Dockerfile"
+    procs
+      "docker"
+      ["build", "-t", phase `TS.append` ":0.1", "." ]
+      (select [])
+    rm "Dockerfile"
+    submList <- sort $ find (suffix "Makefile") submDir
+    aSubm <- select submList
+    let aSubmDir = directory aSubm
+    cd aSubmDir
     liftIO . print $ "Processing " ++ pathToString aSubmDir
 
