@@ -7,3 +7,6 @@ build:
 
 run:
 	cabal new-run
+
+repl:
+	cabal new-repl

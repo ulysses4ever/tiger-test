@@ -23,12 +23,6 @@ import qualified Data.Text as TS
 enumerateSubmissions :: Shell ()
 enumerateSubmissions = do
     cd submDir
-    cp dockerfile "Dockerfile"
-    procs
-      "docker"
-      ["build", "-t", phase `TS.append` ":0.1", "." ]
-      (select [])
-    rm "Dockerfile"
     submList <- sort $ find (suffix "Makefile") submDir
     aSubm <- select submList
     let aSubmDir = directory aSubm
