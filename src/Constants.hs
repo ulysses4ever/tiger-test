@@ -89,7 +89,6 @@ outDir = "_out"
 outFailDir :: IsString s => s
 outFailDir = "_out_fail"
 
-
 startMarker :: ByteString
 startMarker = "START_" `BSC8.append` BSC8.map toUpper phase
 
